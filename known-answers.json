@@ -1,0 +1,22 @@
+[
+  {
+    "pattern": "what\\s+is\\s+your\\s+current\\s+location|current\\s+location|localiza[cç][aã]o\\s+atual",
+    "answer": "Vila Velha"
+  },
+  {
+    "pattern": "phone|telefone|celular",
+    "answer": "27999472624"
+  },
+  {
+    "pattern": "years\\s+of\\s+experience|anos\\s+de\\s+experiencia",
+    "answer": "5"
+  },
+  {
+    "pattern": "legally\\s+authorized\\s+to\\s+work|autorizad[oa]\\s+legalmente\\s+para\\s+trabalhar",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "require\\s+sponsorship|precisa\\s+de\\s+patrocinio\\s+de\\s+visto",
+    "answer": "No"
+  }
+]
