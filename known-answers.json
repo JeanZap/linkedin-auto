@@ -1,7 +1,7 @@
 [
   {
-    "pattern": "what\\s+is\\s+your\\s+current\\s+location|current\\s+location|localiza[cç][aã]o\\s+atual",
-    "answer": "Vila Velha"
+    "pattern": "what\\s+is\\s+your\\s+current\\s+location|current\\s+location|localiza[cç][aã]o\\s+atual|city|cidade",
+    "answer": "Vila Velha, ES"
   },
   {
     "pattern": "phone|telefone|celular",
@@ -18,5 +18,77 @@
   {
     "pattern": "require\\s+sponsorship|precisa\\s+de\\s+patrocinio\\s+de\\s+visto",
     "answer": "No"
+  },
+  {
+    "pattern": "expected\\s+salary|salary\\s+expectation|pretens[aã]o\\s+salarial",
+    "answer": "USD 4000"
+  },
+  {
+    "pattern": "used\\s+an\\s+ai\\s+coding\\s+agent.*last\\s+30\\s+days|ai\\s+coding\\s+agent.*production\\s+code",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "majority\\s+of\\s+the\\s+code\\s+you\\s+shipped\\s+written\\s+by\\s+an\\s+ai\\s+agent|maioria\\s+do\\s+c[oó]digo.*agente\\s+de\\s+ia",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "built\\s+or\\s+meaningfully\\s+tuned\\s+an\\s+evals?\\s*\\/\\s*prompt\\s*\\/\\s*guardrail|evals?.*guardrail.*before\\s+merge",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "7\\+\\s*years\\s+of\\s+professional\\s+experience|7\\s*\\+\\s*anos\\s+de\\s+experi[êe]ncia",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "at\\s+least\\s+3\\s+years\\s+of\\s+production\\s+experience.*(php\\/laravel|typescript\\s+with\\s+react|react\\s+native)|3\\+\\s*anos.*(laravel|react)",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "final\\s+call\\s+on\\s+technical\\s+approach|sem\\s+tech\\s+lead\\s+ou\\s+architect",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "owned\\s+a\\s+feature.*business\\s+metric|m[eé]trica\\s+de\\s+neg[oó]cio",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "decided\\s+not\\s+to\\s+build\\s+something\\s+the\\s+pm\\s+originally\\s+asked|n[aã]o\\s+construir\\s+algo\\s+que\\s+o\\s+pm",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "comfortable\\s+being\\s+evaluated\\s+on\\s+a\\s+metric\\s+you\\s+don'?t\\s+fully\\s+control|confort[aá]vel\\s+ser\\s+avaliado\\s+por\\s+m[eé]trica",
+    "answer": "Yes"
+  },
+  {
+    "pattern": "one\\s+production\\s+pr\\s+where\\s+an\\s+ai\\s+agent\\s+wrote\\s+most\\s+of\\s+the\\s+code|production\\s+pr.*ai\\s+agent",
+    "answer": "In a private B2B SaaS codebase (Laravel 10 + React/TypeScript), PR #842 added account-level usage alerts and weekly email digests. Claude Code generated most of the backend plumbing (migrations, jobs, policy checks, notification templates), and I wrote the metric definitions, corrected edge cases around timezone batching, and tightened query performance before merge. Repo is private, but I can share a redacted PR screenshot showing the diff and review comments."
+  },
+  {
+    "pattern": "name\\s+one\\s+initiative\\s+you\\s+owned\\s+and\\s+the\\s+metric\\s+it\\s+moved|initiative.*metric",
+    "answer": "Owned the onboarding checklist revamp; increased 14-day activation from 31.4% to 38.9% in 4 weeks."
+  },
+  {
+    "pattern": "architecture\\s*\\/\\s*decision\\s+doc|rfc|adr|design\\s+doc|post-?mortem",
+    "answer": "ADR-017 (internal): Move async exports from request thread to queued pipeline with S3 handoff. Excerpt: Decision: all exports above 10k rows run async via queue workers with idempotency keys. Rationale: p95 request latency was 2.8s and timed out under concurrent exports; async pipeline isolates heavy I/O and allows retry semantics. Consequence: adds operational complexity (queue monitoring), but reduced export-related API timeouts from 4.2% to 0.3%."
+  },
+  {
+    "pattern": "initiative\\s+you\\s+owned\\s+that\\s+didn'?t\\s+work|what\\s+happened\\?\\s*what\\s+would\\s+you\\s+do\\s+differently",
+    "answer": "I owned an initiative to add an AI-generated next best action panel to the sales dashboard, expecting it to improve rep follow-up rates. Adoption looked good in week 1, but conversion to booked meetings stayed flat (11.2% to 11.4%), and interviews showed reps did not trust low-context suggestions. I had optimized for model output quality, but not for explainability and workflow fit. If I did it again, I would run a smaller pilot first, include confidence and explanation UI from day one, and gate rollout on a metric tied to actual pipeline movement, not just feature clicks."
+  },
+  {
+    "pattern": "quanto\\s+tempo\\s+de\\s+experi[êe]ncia\\s+voc[eê]\\s+possui\\s+com\\s+java|anos?\\s+de\\s+experi[êe]ncia\\s+com\\s+java|java\\s+experience",
+    "answer": "0"
+  },
+  {
+    "pattern": "quanto\\s+tempo\\s+de\\s+experi[êe]ncia\\s+voc[eê]\\s+possui\\s+com\\s+react\\.?js|anos?\\s+de\\s+experi[êe]ncia\\s+com\\s+react\\.?js|react\\.?js\\s+experience",
+    "answer": "5"
+  },
+  {
+    "pattern": "j[aá]\\s+atuou\\s+como\\s+desenvolvedor\\(a\\)\\s+no\\s+setor\\s+de\\s+turismo|setor\\s+de\\s+turismo|turismo",
+    "answer": "No"
+  },
+  {
+    "pattern": "experi[êe]ncia\\s+com\\s+desenvolvimento\\s+de\\s+aplica[cç][oõ]es\\s+back-?end\\s+em\\s+linguagens\\s+javascript|back-?end.*javascript.*h[aá]\\s+quanto\\s+tempo|anos?\\s+de\\s+experi[êe]ncia\\s+com\\s+javascript\\s+back-?end",
+    "answer": "5"
   }
 ]

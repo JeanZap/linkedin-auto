@@ -6,6 +6,7 @@ const { stdin: input, stdout: output } = require("node:process");
 
 const JOBS_URL = process.env.JOBS_URL;
 const MAX_APPS = Number(process.env.MAX_APPS || 20);
+const SKIP_JOBS = Math.max(0, Number(process.env.SKIP_JOBS || 0));
 const PHONE = process.env.PHONE || "";
 const CV_PATH = process.env.CV_PATH || "";
 const STORAGE = "linkedin-auth.json";
@@ -14,8 +15,9 @@ const ANSWERS_FILE = "known-answers.json";
 function loadKnownAnswers() {
   const fallback = [
     {
-      pattern: "what\\s+is\\s+your\\s+current\\s+location|current\\s+location|localiza[cç][aã]o\\s+atual",
-      answer: "Vila Velha",
+      pattern:
+        "what\\s+is\\s+your\\s+current\\s+location|current\\s+location|localiza[cç][aã]o\\s+atual|city|cidade",
+      answer: "Vila Velha, ES",
     },
   ];
 
@@ -49,6 +51,23 @@ function loadKnownAnswers() {
 }
 
 const KNOWN_ANSWERS = loadKnownAnswers();
+
+function normalizeText(value) {
+  return (value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const COMPILED_KNOWN_ANSWERS = KNOWN_ANSWERS.map((rule) => ({
+  ...rule,
+  regex: new RegExp(normalizeText(rule.pattern), "i"),
+}));
 
 async function askEnter(message) {
   const rl = readline.createInterface({ input, output });
@@ -127,6 +146,42 @@ async function fillKnownQuestions(page) {
         parts.push(nearLabel.textContent);
       }
 
+      const fieldsetLegend = element.closest("fieldset")?.querySelector("legend");
+      if (fieldsetLegend?.textContent) {
+        parts.push(fieldsetLegend.textContent);
+      }
+
+      return normalize(parts.join(" "));
+    }
+
+    function getRadioOptionText(input) {
+      const parts = [];
+      const id = input.id;
+
+      if (input.value) {
+        parts.push(input.value);
+      }
+
+      if (id) {
+        const explicitLabel = document.querySelector(`label[for="${id}"]`);
+        if (explicitLabel?.textContent) {
+          parts.push(explicitLabel.textContent);
+        }
+      }
+
+      const wrapLabel = input.closest("label");
+      if (wrapLabel?.textContent) {
+        parts.push(wrapLabel.textContent);
+      }
+
+      const optionContainer =
+        input.closest(".fb-form-element__option") ||
+        input.closest(".jobs-easy-apply-form-element") ||
+        input.parentElement;
+      if (optionContainer?.textContent) {
+        parts.push(optionContainer.textContent);
+      }
+
       return normalize(parts.join(" "));
     }
 
@@ -146,15 +201,25 @@ async function fillKnownQuestions(page) {
 
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const changes = [];
+    const handledRadioGroups = new Set();
 
     for (const element of elements) {
-      if (!isVisible(element)) {
+      const isRadioInput =
+        element instanceof HTMLInputElement && (element.type || "").toLowerCase() === "radio";
+
+      if (!isRadioInput && !isVisible(element)) {
         continue;
       }
 
       if (element instanceof HTMLInputElement) {
         const t = (element.type || "text").toLowerCase();
-        if (["hidden", "file", "checkbox", "radio", "submit", "button"].includes(t)) {
+        if (["hidden", "file", "checkbox", "submit", "button"].includes(t)) {
+          continue;
+        }
+
+        const role = (element.getAttribute("role") || "").toLowerCase();
+        const autoComplete = (element.getAttribute("aria-autocomplete") || "").toLowerCase();
+        if (role === "combobox" || autoComplete === "list") {
           continue;
         }
       }
@@ -170,7 +235,55 @@ async function fillKnownQuestions(page) {
       }
 
       const currentValue = (element.value || "").trim();
-      if (currentValue) {
+      if (!isRadioInput && currentValue) {
+        continue;
+      }
+
+      if (isRadioInput) {
+        const radio = element;
+        const answerNormalized = normalize(rule.answer);
+        const groupKey = radio.name || radio.id || question;
+
+        if (handledRadioGroups.has(groupKey)) {
+          continue;
+        }
+        handledRadioGroups.add(groupKey);
+
+        let radios = [];
+        if (radio.name) {
+          radios = Array.from(document.querySelectorAll('input[type="radio"]')).filter(
+            (r) => r.name === radio.name
+          );
+        }
+        if (!radios.length) {
+          radios = [radio];
+        }
+
+        const optionMatch = radios.find((r) => {
+          const optionText = getRadioOptionText(r);
+          return optionText === answerNormalized || optionText.includes(answerNormalized);
+        });
+
+        const target = optionMatch || radios.find((r) => normalize(r.value) === answerNormalized);
+        if (!target) {
+          continue;
+        }
+
+        const targetId = target.id;
+        const targetLabel = targetId ? document.querySelector(`label[for="${targetId}"]`) : null;
+        if (targetLabel instanceof HTMLElement) {
+          targetLabel.click();
+        } else {
+          target.click();
+        }
+
+        if (!target.checked) {
+          target.checked = true;
+        }
+
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+        changes.push({ question, answer: rule.answer, pattern: rule.pattern });
         continue;
       }
 
@@ -199,6 +312,133 @@ async function fillKnownQuestions(page) {
   }
 }
 
+async function fillKnownTypeaheadQuestions(page) {
+  const fields = await page.evaluate(() => {
+    function normalize(text) {
+      return (text || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+    }
+
+    function isVisible(el) {
+      if (!(el instanceof HTMLElement)) {
+        return false;
+      }
+      const style = window.getComputedStyle(el);
+      return style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+    }
+
+    function getQuestionText(element) {
+      const parts = [];
+      const ariaLabel = element.getAttribute("aria-label");
+      const placeholder = element.getAttribute("placeholder");
+      const name = element.getAttribute("name");
+      const id = element.id;
+
+      if (ariaLabel) {
+        parts.push(ariaLabel);
+      }
+      if (placeholder) {
+        parts.push(placeholder);
+      }
+      if (name) {
+        parts.push(name);
+      }
+      if (id) {
+        const linkedLabel = document.querySelector(`label[for="${id}"]`);
+        if (linkedLabel?.textContent) {
+          parts.push(linkedLabel.textContent);
+        }
+      }
+
+      const nearLabel =
+        element.closest(".fb-dash-form-element")?.querySelector("label") ||
+        element.closest(".jobs-easy-apply-form-section")?.querySelector("label");
+      if (nearLabel?.textContent) {
+        parts.push(nearLabel.textContent);
+      }
+
+      return normalize(parts.join(" "));
+    }
+
+    const candidates = Array.from(
+      document.querySelectorAll("input[role='combobox'], input[aria-autocomplete='list']")
+    );
+
+    return candidates
+      .filter((el) => el instanceof HTMLInputElement && isVisible(el) && el.id)
+      .map((el) => ({
+        id: el.id,
+        question: getQuestionText(el),
+        value: (el.value || "").trim(),
+      }));
+  });
+
+  for (const field of fields) {
+    if (!field.question) {
+      continue;
+    }
+
+    const rule = COMPILED_KNOWN_ANSWERS.find((item) => item.regex.test(field.question));
+    if (!rule) {
+      continue;
+    }
+
+    const targetValue = normalizeText(rule.answer);
+    if (normalizeText(field.value) === targetValue) {
+      continue;
+    }
+
+    const input = page.locator(`#${field.id}`).first();
+    const visible = await input.isVisible().catch(() => false);
+    if (!visible) {
+      continue;
+    }
+
+    const searchValue = (rule.answer || "").split(",")[0].trim() || rule.answer;
+    await input.click({ timeout: 2000 }).catch(() => {});
+    await input.fill("").catch(() => {});
+    await input.type(searchValue, { delay: 35 }).catch(() => {});
+    await page.waitForTimeout(500);
+
+    const answerRegex = new RegExp(escapeRegExp(rule.answer), "i");
+    const searchRegex = new RegExp(escapeRegExp(searchValue), "i");
+    const typeaheadContainer = page.locator(`#${field.id}-ta`).first();
+    const selectedOption = await clickFirstVisibleEnabled([
+      typeaheadContainer.getByRole("option", { name: answerRegex }),
+      typeaheadContainer.getByRole("option", { name: searchRegex }),
+      typeaheadContainer.locator(".basic-typeahead__selectable", { hasText: answerRegex }),
+      typeaheadContainer.locator(".basic-typeahead__selectable", { hasText: searchRegex }),
+      typeaheadContainer.locator(".search-typeahead-v2__hit", { hasText: answerRegex }),
+      typeaheadContainer.locator(".search-typeahead-v2__hit", { hasText: searchRegex }),
+      typeaheadContainer.locator("li", { hasText: answerRegex }),
+      typeaheadContainer.locator("li", { hasText: searchRegex }),
+      page.getByRole("option", { name: answerRegex }),
+      page.getByRole("option", { name: searchRegex }),
+    ]);
+
+    if (!selectedOption) {
+      await input.press("ArrowDown").catch(() => {});
+      await input.press("Enter").catch(() => {});
+    }
+
+    await page.waitForTimeout(350);
+    const current = normalizeText(await input.inputValue().catch(() => ""));
+    const searchNormalized = normalizeText(searchValue);
+    if (current && current.includes(searchNormalized)) {
+      console.log(`Resposta automatica aplicada: "${rule.answer}".`);
+      continue;
+    }
+
+    console.log(`Nao foi possivel selecionar automaticamente: "${rule.answer}".`);
+    await askEnter(
+      `Preencha manualmente o campo "${field.question}" com "${rule.answer}" e confirme para continuar.`
+    );
+  }
+}
+
 async function clickFirstVisibleEnabled(locators) {
   for (const locator of locators) {
     const count = await locator.count().catch(() => 0);
@@ -222,6 +462,57 @@ async function clickFirstVisibleEnabled(locators) {
   }
 
   return false;
+}
+
+async function closePostSubmitModalIfOpen(page) {
+  await page.waitForTimeout(700);
+
+  const modal = page.locator(".artdeco-modal, .jobs-easy-apply-modal").first();
+  const modalVisible = await modal.isVisible().catch(() => false);
+  if (!modalVisible) {
+    return;
+  }
+
+  const closedByPrimaryButton = await clickFirstVisibleEnabled([
+    page.getByRole("button", { name: /conclu[ií]do|done|fechar|close|ok/i }),
+    page.locator("button:has-text('Concluído')"),
+    page.locator("button:has-text('Concluido')"),
+    page.locator("button:has-text('Done')"),
+    page.locator("button:has-text('Fechar')"),
+    page.locator("button:has-text('Close')"),
+  ]);
+
+  if (closedByPrimaryButton) {
+    await page.waitForTimeout(500);
+    return;
+  }
+
+  const closedByDismiss = await clickFirstVisibleEnabled([
+    page.locator("button.artdeco-modal__dismiss"),
+    page.locator(".artdeco-modal__dismiss"),
+    page.locator("button[aria-label*='dismiss' i]"),
+    page.locator("button[aria-label*='close' i]"),
+    page.locator("button[aria-label*='fechar' i]"),
+    page.locator("button[aria-label*='dispensa' i]"),
+  ]);
+
+  if (!closedByDismiss) {
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(350);
+
+    const stillOpen = await modal.isVisible().catch(() => false);
+    if (stillOpen) {
+      await page.evaluate(() => {
+        const btn = document.querySelector("button.artdeco-modal__dismiss, .artdeco-modal__dismiss");
+        if (btn instanceof HTMLElement) {
+          btn.click();
+        }
+      }).catch(() => {});
+    }
+  }
+
+  await modal.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(350);
 }
 
 (async () => {
@@ -285,7 +576,13 @@ async function clickFirstVisibleEnabled(locators) {
     return;
   }
 
-  for (let i = 0; i < total && applied < MAX_APPS; i++) {
+  const startIndex = Math.min(SKIP_JOBS, total);
+  if (startIndex > 0) {
+    console.log(`Pulando ${startIndex} vaga(s) antes de iniciar os envios.`);
+  }
+
+  for (let i = startIndex; i < total && applied < MAX_APPS; i++) {
+    await closePostSubmitModalIfOpen(page);
     const card = cards.nth(i);
     await card.click({ timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);
@@ -315,11 +612,13 @@ async function clickFirstVisibleEnabled(locators) {
     }
 
     await fillKnownQuestions(page);
+    await fillKnownTypeaheadQuestions(page);
 
     let steps = 0;
     let submitted = false;
     while (steps < 7) {
       await fillKnownQuestions(page);
+      await fillKnownTypeaheadQuestions(page);
 
       const clickedReview = await clickFirstVisibleEnabled([
         page.getByRole("button", { name: /revisar|review|revise/i }),
@@ -372,12 +671,12 @@ async function clickFirstVisibleEnabled(locators) {
 
     if (!submitted) {
       console.log(`Pulada vaga ${i + 1}: fluxo complexo ou sem botão final.`);
+      await askEnter(
+        `Preencha manualmente a vaga ${i + 1} no modal atual. Quando terminar, confirme para continuar o processamento.`
+      );
       await closeModalIfOpen(page);
     } else {
-      const done = page.getByRole("button", { name: /concluído|done/i }).first();
-      if (await done.isVisible().catch(() => false)) {
-        await done.click().catch(() => {});
-      }
+      await closePostSubmitModalIfOpen(page);
     }
 
     await page.waitForTimeout(1000);
